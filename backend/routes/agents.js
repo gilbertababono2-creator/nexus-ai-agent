@@ -5,9 +5,15 @@ import OpenAI from 'openai';
 const router = express.Router();
 const db = admin.firestore();
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+let openai;
+try {
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+  });
+} catch (error) {
+  console.error('Failed to initialize OpenAI:', error.message);
+}
+
 
 // Helper: Get conversation history
 async function getHistory(userId, limit = 20) {
