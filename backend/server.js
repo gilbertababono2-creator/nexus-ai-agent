@@ -47,3 +47,6 @@ app.use('/api/files', fileRoutes);
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
+console.log('✅ Firebase initialized successfully');
+console.log('📦 Firestore ready:', !!admin.firestore());
