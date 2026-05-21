@@ -1,5 +1,46 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import { useAuth } from './hooks/useAuth';
+import Dashboard from './pages/Dashboard';
+import Chat from './pages/Chat';
+import Tasks from './pages/Tasks';
+import Appointments from './pages/Appointments';
+import Notes from './pages/Notes';
+import Login from './pages/Login';
+import Admin from './pages/Admin';
+
+const PrivateRoute = ({ children }) => {
+  const { user } = useAuth();
+  return user ? children : <Navigate to="/login" />;
+};
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+      <Route path="/chat" element={<PrivateRoute><Chat /></PrivateRoute>} />
+      <Route path="/tasks" element={<PrivateRoute><Tasks /></PrivateRoute>} />
+      <Route path="/appointments" element={<PrivateRoute><Appointments /></PrivateRoute>} />
+      <Route path="/notes" element={<PrivateRoute><Notes /></PrivateRoute>} />
+      <Route path="/admin" element={<PrivateRoute><Admin /></PrivateRoute>} />
+    </Routes>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </BrowserRouter>
+  );
+}
+
 
 function App() {
   const [message, setMessage] = useState('');
