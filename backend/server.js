@@ -2,26 +2,27 @@ import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
-import admin from 'firebase-admin';
+import admin from 'firebase-admin';  // <-- Import first
 
+dotenv.config();
+
+// 🔥 Initialize Firebase FIRST (before anything else)
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+// Now import routes (AFTER Firebase is initialized)
 import authRoutes from './routes/auth.js';
 import agentRoutes from './routes/agents.js';
 import appointmentRoutes from './routes/appointments.js';
 import taskRoutes from './routes/tasks.js';
 import fileRoutes from './routes/files.js';
 
-dotenv.config();
-
-// Firebase Admin (read from env)
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
-
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Security & Middleware
+// Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
@@ -39,7 +40,7 @@ app.use('/api/appointments', appointmentRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/files', fileRoutes);
 
-// Health check (critical for Render)
+// Health check
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
