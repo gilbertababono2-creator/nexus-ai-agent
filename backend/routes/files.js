@@ -3,9 +3,10 @@ import express from 'express';
 import admin from 'firebase-admin';
 
 const router = express.Router();
-const bucket = admin.storage().bucket();
+
 
 router.post('/upload', async (req, res) => {
+  const bucket = admin.storage().bucket();
   try {
     const { userId, fileName, fileData } = req.body;
     const buffer = Buffer.from(fileData, 'base64');
