@@ -3,10 +3,11 @@ import express from 'express';
 import admin from 'firebase-admin';
 
 const router = express.Router();
-const db = admin.firestore();
+
 
 // Get all appointments for a user
 router.get('/:userId', async (req, res) => {
+  const db = admin.firestore();
   try {
     const snapshot = await db.collection('appointments')
       .where('userId', '==', req.params.userId)
