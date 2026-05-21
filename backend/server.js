@@ -2,22 +2,20 @@ import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
-import admin from 'firebase-admin';  // <-- Import first
+import admin from 'firebase-admin';
 
 dotenv.config();
- // ... after dotenv.config()
-console.log("ENV CHECK:");
-console.log("PORT:", process.env.PORT);
-console.log("FIREBASE_SERVICE_ACCOUNT exists?", !!process.env.FIREBASE_SERVICE_ACCOUNT);
-console.log("FIREBASE_SERVICE_ACCOUNT length:", process.env.FIREBASE_SERVICE_ACCOUNT?.length);
-console.log("First 100 chars:", process.env.FIREBASE_SERVICE_ACCOUNT?.substring(0, 100));
-// 🔥 Initialize Firebase FIRST (before anything else)
+
+// 🔥 Initialize Firebase FIRST
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
 
-// Now import routes (AFTER Firebase is initialized)
+// ✅ Firestore is now ready
+const db = admin.firestore();
+
+// ✅ Import routes AFTER Firebase is ready
 import authRoutes from './routes/auth.js';
 import agentRoutes from './routes/agents.js';
 import appointmentRoutes from './routes/appointments.js';
