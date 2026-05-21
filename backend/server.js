@@ -5,7 +5,12 @@ import dotenv from 'dotenv';
 import admin from 'firebase-admin';  // <-- Import first
 
 dotenv.config();
-
+ // ... after dotenv.config()
+console.log("ENV CHECK:");
+console.log("PORT:", process.env.PORT);
+console.log("FIREBASE_SERVICE_ACCOUNT exists?", !!process.env.FIREBASE_SERVICE_ACCOUNT);
+console.log("FIREBASE_SERVICE_ACCOUNT length:", process.env.FIREBASE_SERVICE_ACCOUNT?.length);
+console.log("First 100 chars:", process.env.FIREBASE_SERVICE_ACCOUNT?.substring(0, 100));
 // 🔥 Initialize Firebase FIRST (before anything else)
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 admin.initializeApp({
