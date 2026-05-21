@@ -3,7 +3,7 @@ import admin from 'firebase-admin';
 import OpenAI from 'openai';
 
 const router = express.Router();
-
+const db = admin.firestore();
 
 let openai;
 try {
@@ -27,7 +27,6 @@ async function getHistory(userId, limit = 20) {
 
 // Enhanced chat with memory + function calling
 router.post('/chat', async (req, res) => {
-  const db = admin.firestore();
   try {
     const { userId, message } = req.body;
     if (!userId || !message) {
