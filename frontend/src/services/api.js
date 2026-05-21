@@ -2,7 +2,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/constants';
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: 'https://nexus-ai-agent-r2x9.onrender.com',
   headers: { 'Content-Type': 'application/json' }
 });
 
