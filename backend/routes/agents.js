@@ -1,22 +1,14 @@
 import express from 'express';
 import admin from 'firebase-admin';
-import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const router = express.Router();
+const db = admin.firestore();
 
-
-let openai;
-try {
-  openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY
-  });
-} catch (error) {
-  console.error('Failed to initialize OpenAI:', error.message);
-}
-
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Helper: Get conversation history
-async function getHistory(db,userId, limit = 20) {
+async function getHistory(db, userId, limit = 20) {
   const snap = await db.collection('users').doc(userId)
     .collection('conversations')
     .orderBy('timestamp', 'desc')
@@ -25,154 +17,138 @@ async function getHistory(db,userId, limit = 20) {
   return snap.docs.map(d => d.data()).reverse();
 }
 
-// Enhanced chat with memory + function calling
+// Enhanced chat with memory + function calling (Gemini)
 router.post('/chat', async (req, res) => {
-  const db = admin.firestore();
   try {
     const { userId, message } = req.body;
     if (!userId || !message) {
       return res.status(400).json({ error: 'userId and message are required' });
     }
 
-    const history = await getHistory(db,userId);
+    const history = await getHistory(db, userId);
     const userRef = db.collection('users').doc(userId);
 
-    // Build messages
-    const messages = [
-      { role: 'system', content: `You are Nexus, an advanced AI agent with memory, task management, scheduling, and web search capabilities. 
-        You can schedule appointments, create tasks, store notes, generate images, and search the web. 
-        Keep responses concise, helpful, and friendly.` },
-      ...history.map(h => ({ role: h.role, content: h.content })),
-      { role: 'user', content: message }
-    ];
+    // Build messages for Gemini
+    const geminiHistory = history.map(h => ({
+      role: h.role === 'user' ? 'user' : 'model',
+      parts: [{ text: h.content }]
+    }));
 
-    // Tools/Functions
-    const tools = [
-      {
-        type: 'function',
-        function: {
-          name: 'schedule_appointment',
-          description: 'Schedule an appointment',
-          parameters: {
-            type: 'object',
-            properties: {
-              date: { type: 'string', description: 'YYYY-MM-DD' },
-              time: { type: 'string', description: 'HH:MM' },
-              title: { type: 'string' }
-            }
-          }
-        }
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'create_task',
-          description: 'Create a task',
-          parameters: {
-            type: 'object',
-            properties: {
-              task: { type: 'string' },
-              priority: { type: 'string', enum: ['high', 'medium', 'low'] }
-            }
-          }
-        }
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'store_note',
-          description: 'Store a note for the user',
-          parameters: {
-            type: 'object',
-            properties: {
-              title: { type: 'string' },
-              content: { type: 'string' },
-              tags: { type: 'array', items: { type: 'string' } }
-            }
-          }
-        }
-      },
-      {
-        type: 'function',
-        function: {
-          name: 'search_web',
-          description: 'Search the web for current information',
-          parameters: {
-            type: 'object',
-            properties: {
-              query: { type: 'string' }
-            }
-          }
-        }
-      }
-    ];
+    // System prompt as first message
+    const systemPrompt = {
+      role: 'user',
+      parts: [{
+        text: `You are Nexus, an advanced AI agent with memory, task management, scheduling, and web search capabilities.
+        You can schedule appointments, create tasks, store notes, generate images, and search the web.
+        Keep responses concise, helpful, and friendly.
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages,
-      tools,
-      tool_choice: 'auto',
+        If you need to perform an action, respond with a JSON block using the following format:
+        {
+          "function": "function_name",
+          "parameters": { ... }
+        }
+
+        Available functions:
+        - schedule_appointment: { "date": "YYYY-MM-DD", "time": "HH:MM", "title": "string" }
+        - create_task: { "task": "string", "priority": "high|medium|low" }
+        - store_note: { "title": "string", "content": "string", "tags": ["string"] }
+        - search_web: { "query": "string" }
+        
+        If no action is needed, just respond normally.`
+      }]
+    };
+
+    const chat = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' }).startChat({
+      history: [...geminiHistory]
     });
 
-    const responseMsg = completion.choices[0].message;
+    // Send message
+    const result = await chat.sendMessage(message);
+    const responseText = result.response.text();
 
-    // Save user message to history
+    // Check if response contains a JSON function call
+    let functionCall = null;
+    try {
+      // Look for JSON block in response
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.function && parsed.parameters) {
+          functionCall = parsed;
+        }
+      }
+    } catch (e) {
+      // No valid JSON function call found, treat as normal response
+    }
+
+    // Handle function calls
+    if (functionCall) {
+      const { function: name, parameters: args } = functionCall;
+
+      if (name === 'schedule_appointment') {
+        await db.collection('appointments').add({
+          userId,
+          ...args,
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return res.json({
+          message: `📅 Appointment '${args.title}' scheduled for ${args.date} at ${args.time}`
+        });
+      }
+
+      if (name === 'create_task') {
+        await db.collection('tasks').add({
+          userId,
+          ...args,
+          completed: false,
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return res.json({
+          message: `✅ Task '${args.task}' (${args.priority}) created`
+        });
+      }
+
+      if (name === 'store_note') {
+        await db.collection('notes').add({
+          userId,
+          ...args,
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return res.json({
+          message: `📝 Note '${args.title}' stored with tags: ${args.tags?.join(', ') || 'none'}`
+        });
+      }
+
+      if (name === 'search_web') {
+        return res.json({
+          message: `🔍 Searching web for: "${args.query}" (integration coming soon!)`
+        });
+      }
+    }
+
+    // Save user message
     await userRef.collection('conversations').add({
       role: 'user',
       content: message,
       timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // Handle tool calls
-    if (responseMsg.tool_calls) {
-      for (const call of responseMsg.tool_calls) {
-        const args = JSON.parse(call.function.arguments);
-        const name = call.function.name;
-
-        if (name === 'schedule_appointment') {
-          await db.collection('appointments').add({
-            userId, ...args, createdAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-          return res.json({ 
-            message: `📅 Appointment '${args.title}' scheduled for ${args.date} at ${args.time}` 
-          });
-        }
-
-        if (name === 'create_task') {
-          await db.collection('tasks').add({
-            userId, ...args, completed: false, createdAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-          return res.json({ 
-            message: `✅ Task '${args.task}' (${args.priority}) created` 
-          });
-        }
-
-        if (name === 'store_note') {
-          await db.collection('notes').add({
-            userId, ...args, createdAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-          return res.json({ message: `📝 Note '${args.title}' stored with tags: ${args.tags?.join(', ') || 'none'}` });
-        }
-
-        if (name === 'search_web') {
-          // Simulated web search (you could integrate a real API like SerpAPI)
-          return res.json({ message: `🔍 Searching web for: "${args.query}" (integration coming soon!)` });
-        }
-      }
+    // Save assistant response (if no function call was made)
+    if (!functionCall) {
+      await userRef.collection('conversations').add({
+        role: 'assistant',
+        content: responseText,
+        timestamp: admin.firestore.FieldValue.serverTimestamp()
+      });
     }
 
-    // Save assistant response
-    await userRef.collection('conversations').add({
-      role: 'assistant',
-      content: responseMsg.content,
-      timestamp: admin.firestore.FieldValue.serverTimestamp()
+    res.json({ 
+      response: functionCall ? 'Action performed successfully' : responseText 
     });
 
-    res.json({ response: responseMsg.content });
-
   } catch (error) {
-    console.error('Agent Error:', error);
-    res.status(500).json({ error: 'Agent internal error' });
+    console.error('Gemini Error:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
