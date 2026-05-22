@@ -16,7 +16,7 @@ try {
 
 
 // Helper: Get conversation history
-async function getHistory(userId, limit = 20) {
+async function getHistory(db,userId, limit = 20) {
   const snap = await db.collection('users').doc(userId)
     .collection('conversations')
     .orderBy('timestamp', 'desc')
@@ -34,7 +34,7 @@ router.post('/chat', async (req, res) => {
       return res.status(400).json({ error: 'userId and message are required' });
     }
 
-    const history = await getHistory(userId);
+    const history = await getHistory(db,userId);
     const userRef = db.collection('users').doc(userId);
 
     // Build messages
