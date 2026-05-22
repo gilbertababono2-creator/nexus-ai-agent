@@ -3,11 +3,9 @@ import admin from 'firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const router = express.Router();
-
-
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Helper: Get conversation history
+// ✅ Helper: Get conversation history (memory)
 async function getHistory(db, userId, limit = 20) {
   const snap = await db.collection('users').doc(userId)
     .collection('conversations')
@@ -17,60 +15,45 @@ async function getHistory(db, userId, limit = 20) {
   return snap.docs.map(d => d.data()).reverse();
 }
 
-// Enhanced chat with memory + function calling (Gemini)
+// ✅ Enhanced chat with memory + function calling
 router.post('/chat', async (req, res) => {
-  const db = admin.firestore();
   try {
     const { userId, message } = req.body;
     if (!userId || !message) {
       return res.status(400).json({ error: 'userId and message are required' });
     }
 
+    const db = admin.firestore();
     const history = await getHistory(db, userId);
     const userRef = db.collection('users').doc(userId);
 
-    // Build messages for Gemini
+    // ✅ Build conversation history for Gemini
     const geminiHistory = history.map(h => ({
       role: h.role === 'user' ? 'user' : 'model',
       parts: [{ text: h.content }]
     }));
 
-    // System prompt as first message
-    const systemPrompt = {
-      role: 'user',
-      parts: [{
-        text: `You are Nexus, an advanced AI agent with memory, task management, scheduling, and web search capabilities.
-        You can schedule appointments, create tasks, store notes, generate images, and search the web.
-        Keep responses concise, helpful, and friendly.
-
-        If you need to perform an action, respond with a JSON block using the following format:
-        {
-          "function": "function_name",
-          "parameters": { ... }
-        }
-
-        Available functions:
-        - schedule_appointment: { "date": "YYYY-MM-DD", "time": "HH:MM", "title": "string" }
-        - create_task: { "task": "string", "priority": "high|medium|low" }
-        - store_note: { "title": "string", "content": "string", "tags": ["string"] }
-        - search_web: { "query": "string" }
-        
-        If no action is needed, just respond normally.`
-      }]
-    };
-
-    const chat = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-001'}).startChat({
-      history: [...geminiHistory]
+    // ✅ Use the correct model name from your JSON
+    const model = genAI.getGenerativeModel({ model: 'models/gemini-2.0-flash-001' });
+    
+    const chat = model.startChat({
+      history: geminiHistory
     });
 
-    // Send message
+    // ✅ Send message to Gemini
     const result = await chat.sendMessage(message);
     const responseText = result.response.text();
 
-    // Check if response contains a JSON function call
+    // ✅ Save user message to Firestore
+    await userRef.collection('conversations').add({
+      role: 'user',
+      content: message,
+      timestamp: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // ✅ Check if response contains a function call (JSON block)
     let functionCall = null;
     try {
-      // Look for JSON block in response
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
@@ -79,10 +62,10 @@ router.post('/chat', async (req, res) => {
         }
       }
     } catch (e) {
-      // No valid JSON function call found, treat as normal response
+      // No valid function call found
     }
 
-    // Handle function calls
+    // ✅ Handle function calls
     if (functionCall) {
       const { function: name, parameters: args } = functionCall;
 
@@ -127,14 +110,7 @@ router.post('/chat', async (req, res) => {
       }
     }
 
-    // Save user message
-    await userRef.collection('conversations').add({
-      role: 'user',
-      content: message,
-      timestamp: admin.firestore.FieldValue.serverTimestamp()
-    });
-
-    // Save assistant response (if no function call was made)
+    // ✅ Save assistant response (if no function call was made)
     if (!functionCall) {
       await userRef.collection('conversations').add({
         role: 'assistant',
