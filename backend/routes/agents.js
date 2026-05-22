@@ -59,7 +59,7 @@ router.post('/chat', async (req, res) => {
       }]
     };
 
-    const chat = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' }).startChat({
+    const chat = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' }).startChat({
       history: [...geminiHistory]
     });
 
