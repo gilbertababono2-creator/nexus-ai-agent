@@ -3,7 +3,7 @@ import admin from 'firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const router = express.Router();
-const db = admin.firestore();
+
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
@@ -19,6 +19,7 @@ async function getHistory(db, userId, limit = 20) {
 
 // Enhanced chat with memory + function calling (Gemini)
 router.post('/chat', async (req, res) => {
+  const db = admin.firestore();
   try {
     const { userId, message } = req.body;
     if (!userId || !message) {
